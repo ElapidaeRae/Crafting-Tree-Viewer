@@ -1,5 +1,18 @@
 # Crafting Tree Viewer
-<a href="https://wakatime.com/badge/user/ac4869aa-9c9b-4a5a-9111-339289dd115d/project/018d0c33-846a-4a46-92e9-83ea7c57b25c"><img src="https://wakatime.com/badge/user/ac4869aa-9c9b-4a5a-9111-339289dd115d/project/018d0c33-846a-4a46-92e9-83ea7c57b25c.svg" alt="wakatime"></a><a href="https://wakatime.com/badge/github/ElapidaeRae/Crafting-Tree-Viewer"><img src="https://wakatime.com/badge/github/ElapidaeRae/Crafting-Tree-Viewer.svg" alt="wakatime"></a>
 
+<div align=center>
+  <a href="https://wakatime.com/badge/github/ElapidaeRae/Crafting-Tree-Viewer">
+    <img src="https://wakatime.com/badge/github/ElapidaeRae/Crafting-Tree-Viewer.svg?style=for-the-badge&color=ff69b4" alt="wakatime">
+  </a>
+  <a href='https://www.python.org/'>
+    <img src='https://img.shields.io/badge/Python-FFD43B?style=for-the-badge&logo=python&logoColor=blue'>
+  </a>
+  <a href='https://www.djangoproject.com/'>
+    <img src='https://img.shields.io/badge/Django-092E20?style=for-the-badge&logo=django&logoColor=green'>
+  </a>
+  <a href='https://arangodb.com/'>
+    <img src='https://img.shields.io/badge/ArangoDB-DDE072?style=for-the-badge&logo=ArangoDB&logoColor=black' alt='ArangoDB'>
+  </a>
+</div>
 
-A python program made to make terraria's crafting trees look visually appealing
+A python program that aims to make terraria's crafting trees look visually appealing and easy to understand
