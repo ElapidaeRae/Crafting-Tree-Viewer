@@ -29,8 +29,19 @@ def space_to_underscore(string):
     return re.sub('\s', '_', string)
 
 
+def soupify(url):
+    item_page = requests.get(url)
+    # Check if the page exists
+    if item_page.status_code != 200:
+        print(f'Error: Page {url} has a problem, don\'t ask me what it is')
+        return
+    # Parse the page
+    soup = BeautifulSoup(item_page.content, 'html.parser')
+    return soup
+
+
 class Item:
-    def __init__(self, name, wikiLink, imageLink):
+    def __init__(self, name, wikiLink, imageLink=None):
         """
         :type name: str
         :type recipes: list
@@ -48,20 +59,17 @@ class Item:
         self.imageLink = imageLink
         self.recipes = []
         self.obtainedFrom = []
+        if imageLink is None:
+            self.retrieve_image_link(self.wikiLink)
+        self.retrieve_recipes()
+        self.retrieve_obtained_from()
 
     def retrieve_recipes(self):
         """
         :type self:
         :return self.recipes:
         """
-        # Get the wiki page for the item
-        item_page = requests.get(self.wikiLink)
-        # Check if the page exists
-        if item_page.status_code != 200:
-            print('Error: Page has a problem, don\'t ask me what it is')
-            return
-        # Parse the page
-        soup = BeautifulSoup(item_page.content, 'html.parser')
+        soup = soupify(self.wikiLink)
         # Find the table containing the crafting recipe
         table = soup.find('table', class_='background-1')
         # Check if the table exists, if empty there are no recipes
@@ -80,8 +88,92 @@ class Item:
             # Add the recipe to the list of recipes
             self.recipes.append(recipe)
 
+    def __retrieve_obtained_from_vanilla(self):
+        # This one will be a bit more complicated
+        # The wiki has a table that sometimes has the item's source in it
+        # The table only exists if the item is in a drop table
+        soup = soupify(self.wikiLink)
+        # Search to see if the drops table exists
+        # The drops table has multiple tabs that change out the HTML
+        drops_table = soup.find('table', class_='drop-noncustom sortable')
+        if drops_table is None:
+            self.obtainedFrom = []
+            print('Error: Drops table does not exist')
+            return
+        # Find all the rows in the table
+        table_rows = drops_table.find_all('tr')
+        # Iterate through the rows
+        for row in table_rows:
+            cells = row.find_all('td')
+            if '<th>' in str(cells):
+                continue
+            elif len(cells) == 0:
+                continue
+            # if 'i3' or 'i5' are in the row and there is only one percentage, skip it
+            if 'i3' in str(cells) or 'i5' in str(cells):
+                if 'i1' not in str(cells):
+                    continue
+            e_name = cells[0].find('a')['title']
+            quantity = cells[1].text
+            # The drop rate is a bit more complicated as there are sometimes 2 drop rates for different versions of the game
+            # Exclude 3DS drop rates as they are not relevant
+            # Find the span that has the drop rate for desktop at least
+            if cells[2].find('span', class_='eico s i1') is None:
+                drop_rate = cells[2].text
+            else:
+                drop_rate = cells[2].find('span', class_='m-normal')
+                drop_rate_expert = cells[2].find('span', class_='m-expert')
+
+    def __retrieve_obtained_from_calamity(self):
+        # The calamity wiki has drop tables that makes more sense in some ways
+        soup = soupify(self.wikiLink)
+        # The drops table on the calamity wiki is just an infobox with a table in it
+        drops_table = soup.find('table', class_='infobox')
+        if drops_table is None:
+            self.obtainedFrom = []
+            return
+        # Find all the rows in the table
+        table_rows = drops_table.find_all('tr')
+        # Iterate through the rows
+        for row in table_rows:
+            cells = row.find_all('td')
+            if '<th>' in str(cells):
+                continue
+
+            # The first cell has the name of the entity that drops the item
+            # The second cell has the drop quantity
+            quantity = cells[1].text
+            # The third cell has the drop rate, separate the drop rate from the drop rate for expert mode
+            drop_rate = cells[2].text.strip('/')
+            # If the first cell has multiple links, all of them are used
+            if len(cells[0].find_all('a')) > 1:
+                for link in cells[0].find_all('a'):
+                    self.obtainedFrom.append(link['title'] + ' ' + quantity + ' ' + drop_rate)
+            else:
+                self.obtainedFrom.append(cells[0].find('a')['title'] + ' ' + quantity + ' ' + drop_rate)
+
     def retrieve_obtained_from(self):
-        pass
+        # This one will be a bit more complicated
+        # The wiki has a table that sometimes has the item's source in it
+        # The table only exists if the item is in a drop table
+        item_page = requests.get(self.wikiLink)
+        # Check if the page exists
+        if item_page.status_code != 200:
+            print('Error: Page has a problem, don\'t ask me what it is')
+            return
+        elif 'terraria.wiki.gg' in item_page.url:
+            self.__retrieve_obtained_from_vanilla()
+            return
+        elif 'calamitymod.wiki.gg' in item_page.url:
+            self.__retrieve_obtained_from_calamity()
+            return
+        else:
+            print('Error: Page is not from the vanilla or calamity wiki')
+            return
+
+    def get_obtained_from(self):
+        return self.obtainedFrom
+
 
     def get_json(self):
         return json.dumps(self.__dict__)
@@ -112,6 +204,22 @@ class Item:
 
     def get_recipe(self, index):
         return self.recipes[index]
+
+    def retrieve_image_link(self, url):
+        """
+        :type self:
+        :param url:
+        :return:
+        """
+        soup = soupify(url)
+        # Find the image on the page, it is the first image with the alt text '<item name> item sprite'
+        image = soup.find('img', alt=self.name + ' item sprite')
+        # Check if the image exists
+        if image is None:
+            print('Error: Image does not exist')
+            return
+        # Get the image link and append it to the wiki url, which is the first part of the wiki link
+        self.imageLink = url.split('/wiki/')[0] + image['src']
 
 
 class Recipe:
@@ -290,13 +398,13 @@ class Scraper:
 
 
 class VanillaScraper(Scraper):
-    def __init__(self, url):
+    def __init__(self):
         """
         :type url: str
         :param self:
         :param url: format: '\https://terraria.wiki.gg'
         """
-        super().__init__(url)
+        super().__init__('https://terraria.wiki.gg')
 
     def scrape(self):
         # The vanilla wiki has a different format to the calamity wiki, so it needs to be scraped differently
@@ -334,6 +442,14 @@ class VanillaScraper(Scraper):
         :return:
         """
         return json.dumps(self.data)
+
+    def find_crafting_stations(self, url='https://terraria.wiki.gg'):
+        """
+        :param url:
+        :type self:
+        :return:
+        """
+        super().find_crafting_stations(url)
 
 
 class CalamityScraper(Scraper):
