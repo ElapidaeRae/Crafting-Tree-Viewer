@@ -41,7 +41,7 @@ def soupify(url):
 
 
 class Item:
-    def __init__(self, name, wikiLink, imageLink=None):
+    def __init__(self, name, wikiLink, imageLink=None, source='Vanilla'):
         """
         :type name: str
         :type recipes: list
@@ -59,6 +59,7 @@ class Item:
         self.imageLink = imageLink
         self.recipes = []
         self.obtainedFrom = []
+        self.source = source
         if imageLink is None:
             self.retrieve_image_link(self.wikiLink)
         self.retrieve_recipes()
@@ -223,19 +224,30 @@ class Item:
 
 
 class Recipe:
-    def __init__(self, item):
+    def __init__(self, item: Item, crafting_station: str = '', ingredients: list = None,
+                 ingredient_quantities: list = None, initial: bool = True):
         """
-        :type item: Item
-        :param self:
-        :param item:
+        :type self: Recipe
+        :param item: The item that the recipe is for
+        :param crafting_station: The crafting station that the recipe is crafted at
+        :param ingredients: A list of items that are used to craft the item
+        :param ingredient_quantities: A list of quantities of the ingredients
+        :param initial: Determines whether the recipe is retrieved from the wiki or not when the object is created
         """
-        self.item = str(item)
-        self.crafting_station = ''
-        self.ingredients = []
-        self.ingredientQuantities = []
+        if ingredients is None:
+            ingredients = []
+        if ingredient_quantities is None:
+            ingredient_quantities = []
+        self.item = item
+        self.crafting_station = crafting_station
+        self.ingredients = ingredients
+        self.ingredientQuantities = ingredient_quantities
         self.url = 'https://terraria.wiki.gg'
-
-        self.retrieve_ingredients(item)
+        if initial:
+            self.retrieve_ingredients(item)
+        if not initial and (ingredients is None or ingredient_quantities is None):
+            print('Error: Cannot create recipe without ingredients')
+            self.retrieve_ingredients(item)
 
     def get_item(self):
         return self.item
@@ -259,13 +271,45 @@ class Recipe:
         :return:
         """
         # Get the wiki page for the item
-        item_page = requests.get(item.get_wiki_link())
-        # Check if the page exists
-        if item_page.status_code != 200:
-            print('Error: Page does not exist')
+        soup = soupify(item)
+        # Find the table containing the crafting recipe
+        table = soup.find('table', class_='terraria cellborder recipes sortable jquery-tablesorter')
+        # Check if the table exists
+        if table is None:
+            print('Warning: Table does not exist')
             return
-        # Parse the page
-        soup = BeautifulSoup(item_page.content, 'html.parser')
+        # Find all the rows in the table
+
+        if int(table['data-totalrows']) == 1:
+            cells = table.find_all('td')
+            for item in cells[1].find_all('a'):
+                self.ingredients.append(Item(item['title'], self.url + item['href']))
+        # If the table has more than one row, it has more than one recipe
+        elif int(table['data-totalrows']) > 1:
+            table_rows = table.find_all('tr')
+            table_rows[0][1]
+
+
+class CalamityRecipe(Recipe):
+    def __init__(self, item: Item, crafting_station: str = '', ingredients: list = None,
+                 ingredient_quantities: list = None, initial: bool = True):
+        """
+        :type self: Recipe
+        :param item: The item that the recipe is for
+        :param initial: Determines whether the recipe is retrieved from the wiki or not when the object is created
+        """
+        super().__init__(item, crafting_station, ingredients, ingredient_quantities, initial)
+        self.url = 'https://calamitymod.wiki.gg'
+
+    def retrieve_ingredients(self, item):
+        """
+        :type self:
+        :param item:
+        :return:
+        """
+
+        # Get the wiki page for the item
+        soup = soupify(item)
         # Find the table containing the crafting recipe
         table = soup.find('table', class_='background-1')
         # Check if the table exists
@@ -278,13 +322,11 @@ class Recipe:
         # Iterate through the rows
         for row in table_rows:
             cells = row.find_all('td')
-            # The first row is the header, skip it
             # The second row has the crafting station
-            # The third row has another header
             # The fourth row and beyond have the images, names and quantities of the ingredients in that order in each cell
             # The second to last row is another header
             # The last row has the image, name and quantity of the item crafted, the name is the same as the item name, get the quantity
-            # Skip the first row, which is the table header
+            # Skip the table headers
             if '<th>' in str(cells):
                 continue
             elif len(cells) == 0:
@@ -302,14 +344,12 @@ class Scraper:
         """
             :type url: str
             :param self:
-            :param url: format: '\https://terraria.wiki.gg'
+            :param url: format: 'https://terraria.wiki.gg'
             """
         self.url = url
         self.recipes_page = requests.get(url + '/wiki/Recipes')
         self.data = []
 
-    def scrape(self):
-        pass
 
     def get_data(self):
         return self.data
@@ -391,22 +431,36 @@ class Scraper:
         return crafting_stations
 
 
-# This class is used to load the data into the database gathered by the scraper
-# It will be used in the CraftingTreeViewer app, which is a Django web app that displays crafting recipes in a node tree.
-# Each node represents an item and its children represent the items needed to craft it.
-# The data will be stored as json in an arangoDB database using the pyArango library
-
-
 class VanillaScraper(Scraper):
     def __init__(self):
         """
         :type url: str
         :param self:
-        :param url: format: '\https://terraria.wiki.gg'
+        :param url: format: 'https://terraria.wiki.gg'
         """
         super().__init__('https://terraria.wiki.gg')
 
-    def scrape(self):
+    def scrape_items(self):
+        """
+        Scrapes the wiki for items and returns them as a list of item objects
+        :type self:
+
+        """
+        soup = soupify(self.url + '/wiki/Item_IDs')
+        table = soup.find('table', class_='terraria lined sortable jquery-tablesorter')
+        rows = table.find_all('tr')
+        item_list = []
+        for row in rows:
+            item = Item(row[1].find('a')['title'], self.url + row[1].find('a')['href'])
+            item_list.append(item)
+        return item_list
+
+    def scrape_recipes(self):
+        """
+        Scrapes the wiki for item recipes and returns them as a list of recipe objects
+        :type self:
+        :return:
+        """
         # The vanilla wiki has a different format to the calamity wiki, so it needs to be scraped differently
         # The both wikis have a table for each crafting station, which is the caption of the table
         # The both wikis also have a page for each crafting station, which has a table containing the recipes for that station
@@ -456,8 +510,27 @@ class CalamityScraper(Scraper):
     def __init__(self):
         super().__init__('https://calamitymod.wiki.gg')
 
-    def scrape(self):
-        pass
+    def scrape_items(self):
+        """
+        Scrapes the wiki for items and returns them as a list of item objects
+        :type self:
+
+        """
+        soup = soupify(self.url + '/wiki/List_of_Items')
+        # TODO: sift through the ajax links to get the items
+        tables = soup.find_all('table', class_='terraria ajax')
+        urls = []
+        for table in tables:
+            urls.append(table.find['data-ajax-source-page'])
+        item_list = []
+        for link in urls:
+            soupy = soupify(f'{self.url}/wiki/{link}')
+            table = soupy.find('table', class_='terraria lined sortable jquery-tablesorter')
+            rows = table.find_all('tr')
+            for row in rows:
+                item = Item(row[1].find('a')['title'], self.url + row[1].find('a')['href'])
+                item_list.append(item)
+
 
     def get_data(self):
         """

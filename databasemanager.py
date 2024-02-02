@@ -236,8 +236,7 @@ def main():
     db_manager.add_recipes(test_item.recipes)
     db_manager.add_recipes(test_item2.recipes)
     # Add edges to the database.
-    db_manager.add_edge(test_item, test_item.recipes[0])
-    db_manager.add_edge(test_item2, test_item2.recipes[0])
+    db_manager.add_edge(test_item, test_item.recipes)
     # Get the items from the database.
     print(db_manager.get_item('Cell Phone'))
     print(db_manager.get_item('The Eye of Cthulhu'))
